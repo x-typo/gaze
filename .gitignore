@@ -1,0 +1,15 @@
+# Xcode user data
+xcuserdata/
+*.xcuserstate
+
+# Xcode build
+build/
+DerivedData/
+
+# Swift Package Manager (future-proofing; zero SPM deps in v1)
+.build/
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
