@@ -3,7 +3,6 @@ import AVFoundation
 
 @main
 struct GazeApp: App {
-    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var selectedTab = AppTab.home
     @State private var youtubeSession = YouTubeSession()
     @State private var playlistsStore = PlaylistsStore()
@@ -33,7 +32,8 @@ struct GazeApp: App {
         try? AVAudioSession.sharedInstance().setActive(true)
         URLCache.shared = URLCache(
             memoryCapacity: 20 * 1024 * 1024,
-            diskCapacity: 100 * 1024 * 1024
+            diskCapacity: 100 * 1024 * 1024,
+            diskPath: nil
         )
     }
 }
