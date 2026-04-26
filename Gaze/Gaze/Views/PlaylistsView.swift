@@ -125,6 +125,10 @@ struct PlaylistsView: View {
             let authContext = try await youtubeSession.refreshedPlaylistAuthContext()
             await playlistsStore.load(authContext: authContext, force: force)
         } catch {
+            guard !Self.isCancellation(error) else {
+                return
+            }
+
             playlistsStore.fail(with: error)
         }
     }
@@ -138,8 +142,25 @@ struct PlaylistsView: View {
             let authContext = try await youtubeSession.refreshedAuthContext()
             await playlistsStore.loadMore(authContext: authContext)
         } catch {
+            guard !Self.isCancellation(error) else {
+                return
+            }
+
             playlistsStore.failLoadingMore(with: error)
         }
+    }
+
+    private nonisolated static func isCancellation(_ error: Error) -> Bool {
+        if Task.isCancelled || error is CancellationError {
+            return true
+        }
+
+        if let urlError = error as? URLError, urlError.code == .cancelled {
+            return true
+        }
+
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
     }
 }
 

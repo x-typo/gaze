@@ -127,21 +127,22 @@ final class YouTubeSession {
 
             guard !pageResult.wasRedirectedToSignIn else {
                 await clearStoredSession()
+                let finalLocation = Self.locationDescription(for: pageResult)
                 statusMessage = [
                     "YouTube rejected the stored session.",
                     "Native playlist page probe redirected to",
-                    "\(pageResult.finalHost ?? "unknown")\(pageResult.finalPath ?? "").",
+                    "\(finalLocation).",
                     "Sign in again from Settings.",
                 ].joined(separator: " ")
                 return
             }
 
             isSignedIn = true
+            let finalLocation = Self.locationDescription(for: pageResult)
             statusMessage = [
                 "Innertube account probe accepted by YouTube (\(result.responseByteCount) bytes).",
-                "Native playlist page probe: \(pageResult.responseByteCount) bytes,",
-                "final \(pageResult.finalHost ?? "unknown")\(pageResult.finalPath ?? ""),",
-                "sign-in redirect \(pageResult.wasRedirectedToSignIn ? "yes" : "no").",
+                "Native playlist page probe accepted:",
+                "\(pageResult.responseByteCount) bytes, final \(finalLocation).",
             ].joined(separator: " ")
         } catch {
             if Self.isAuthRejection(error) {
@@ -286,6 +287,10 @@ final class YouTubeSession {
         }
 
         return false
+    }
+
+    private static func locationDescription(for result: NativePageProbeResult) -> String {
+        "\(result.finalHost ?? "unknown")\(result.finalPath ?? "")"
     }
 
     private static func shouldManageCookie(_ cookie: HTTPCookie) -> Bool {
