@@ -49,7 +49,7 @@ final class YouTubeWebPlaylistFetcher: NSObject {
             }
         } onCancel: {
             Task { @MainActor in
-                Self.shared.cancelLoad(with: CancellationError())
+                self.cancelLoad(with: CancellationError())
             }
         }
     }

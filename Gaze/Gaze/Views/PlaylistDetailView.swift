@@ -64,9 +64,19 @@ struct PlaylistDetailView: View {
     @ViewBuilder
     private var playlistVideoContinuationView: some View {
         if store.continuation != nil {
-            ProgressView()
-                .padding(.vertical, 20)
+            PaginationFooterView(
+                isLoading: store.isLoadingMore,
+                errorMessage: store.errorMessage
+            ) {
+                Task {
+                    await loadMoreVideos()
+                }
+            }
                 .task(id: store.continuation) {
+                    guard store.errorMessage == nil else {
+                        return
+                    }
+
                     await loadMoreVideos()
                 }
         }
@@ -93,7 +103,7 @@ struct PlaylistDetailView: View {
         }
 
         do {
-            let authContext = try await youtubeSession.refreshedPlaylistAuthContext()
+            let authContext = try await youtubeSession.refreshedAuthContext()
             await store.loadMore(authContext: authContext)
         } catch {
             store.failLoadingMore(with: error)

@@ -111,9 +111,19 @@ struct SearchResultsView: View {
     @ViewBuilder
     private var searchContinuationView: some View {
         if searchStore.continuation != nil {
-            ProgressView()
-                .padding(.vertical, 20)
+            PaginationFooterView(
+                isLoading: searchStore.isLoadingMore,
+                errorMessage: searchStore.errorMessage
+            ) {
+                Task {
+                    await searchStore.loadMore()
+                }
+            }
                 .task(id: searchStore.continuation) {
+                    guard searchStore.errorMessage == nil else {
+                        return
+                    }
+
                     await searchStore.loadMore()
                 }
         }
