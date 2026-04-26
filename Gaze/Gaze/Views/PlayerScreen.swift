@@ -1,16 +1,19 @@
 import AVFoundation
+import Combine
 import SwiftUI
 
 struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
 
-    @State private var player: AVPlayer
+    private let url: URL
+
+    @State private var player = AVPlayer(playerItem: nil)
     @State private var isPlaying = false
     @State private var controlsVisible = true
     @State private var controlsHideTask: Task<Void, Never>?
 
     init(url: URL = demoStreamURL) {
-        _player = State(initialValue: AVPlayer(url: url))
+        self.url = url
     }
 
     var body: some View {
@@ -46,13 +49,19 @@ struct PlayerScreen: View {
         .onTapGesture {
             showControlsTemporarily()
         }
+        .task(id: url) {
+            load(url)
+        }
+        .onReceive(player.publisher(for: \.timeControlStatus)) { status in
+            isPlaying = status == .playing
+        }
         .onAppear {
             player.play()
-            isPlaying = true
             showControlsTemporarily()
         }
         .onDisappear {
             controlsHideTask?.cancel()
+            controlsHideTask = nil
             player.pause()
             isPlaying = false
         }
@@ -123,8 +132,6 @@ struct PlayerScreen: View {
         } else {
             player.play()
         }
-
-        isPlaying.toggle()
     }
 
     private func seek(by seconds: Double) {
@@ -143,6 +150,7 @@ struct PlayerScreen: View {
 
     private func showControlsTemporarily() {
         controlsHideTask?.cancel()
+        controlsHideTask = nil
 
         withAnimation(.easeInOut(duration: 0.16)) {
             controlsVisible = true
@@ -158,7 +166,14 @@ struct PlayerScreen: View {
             withAnimation(.easeOut(duration: 0.18)) {
                 controlsVisible = false
             }
+
+            controlsHideTask = nil
         }
+    }
+
+    private func load(_ url: URL) {
+        player.replaceCurrentItem(with: AVPlayerItem(url: url))
+        player.play()
     }
 }
 
