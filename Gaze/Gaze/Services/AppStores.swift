@@ -11,6 +11,3 @@ final class SearchStore {}
 
 @Observable
 final class PlaybackStore {}
-
-@Observable
-final class CaptionStore {}
