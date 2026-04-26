@@ -4,16 +4,24 @@ import SwiftUI
 
 struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(CaptionStore.self) private var captionStore
 
-    private let url: URL
+    private let source: PlayerSource
 
     @State private var player = AVPlayer(playerItem: nil)
     @State private var isPlaying = false
     @State private var controlsVisible = true
     @State private var controlsHideTask: Task<Void, Never>?
+    @State private var captionLoadTask: Task<Void, Never>?
+    @State private var timeObserverToken: Any?
+    @State private var loadError: String?
 
     init(url: URL = demoStreamURL) {
-        self.url = url
+        self.source = .directURL(url)
+    }
+
+    init(videoID: String) {
+        self.source = .youtubeVideoID(videoID)
     }
 
     var body: some View {
@@ -26,11 +34,24 @@ struct PlayerScreen: View {
                     VStack(spacing: 0) {
                         Spacer()
 
-                        CaptionOverlayView(text: "Big Buck Bunny finds a quiet place.")
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 14)
+                        if let text = captionStore.activeCaptionText {
+                            CaptionOverlayView(text: text)
+                                .padding(.horizontal, 20)
+                                .padding(.bottom, 14)
+                        }
                     }
                     .padding(12)
+
+                    if let loadError {
+                        Text(loadError)
+                            .font(.headline)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 12)
+                            .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 6))
+                            .padding(24)
+                    }
 
                     if controlsVisible {
                         playerControls
@@ -49,11 +70,32 @@ struct PlayerScreen: View {
         .onTapGesture {
             showControlsTemporarily()
         }
-        .task(id: url) {
-            load(url)
+        .task(id: source) {
+            await load(source)
         }
         .onReceive(player.publisher(for: \.timeControlStatus)) { status in
             isPlaying = status == .playing
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemFailedToPlayToEndTime)) { notification in
+            guard let item = notification.object as? AVPlayerItem,
+                  item === player.currentItem else {
+                return
+            }
+
+            let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+            loadError = error?.localizedDescription
+                ?? player.currentItem?.error?.localizedDescription
+                ?? "Video playback failed."
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemNewErrorLogEntry)) { notification in
+            guard let item = notification.object as? AVPlayerItem,
+                  item === player.currentItem,
+                  let event = player.currentItem?.errorLog()?.events.last else {
+                return
+            }
+
+            loadError = event.errorComment
+                ?? event.errorStatusCode.description
         }
         .onAppear {
             player.play()
@@ -62,6 +104,9 @@ struct PlayerScreen: View {
         .onDisappear {
             controlsHideTask?.cancel()
             controlsHideTask = nil
+            cancelCaptionLoad()
+            removeCaptionTimeObserver()
+            captionStore.clear()
             player.pause()
             isPlaying = false
         }
@@ -171,12 +216,176 @@ struct PlayerScreen: View {
         }
     }
 
-    private func load(_ url: URL) {
-        player.replaceCurrentItem(with: AVPlayerItem(url: url))
-        player.play()
+    private func load(_ source: PlayerSource) async {
+        loadError = nil
+        cancelCaptionLoad()
+        captionStore.clear()
+        installCaptionTimeObserver()
+
+        do {
+            try Task.checkCancellation()
+
+            switch source {
+            case .directURL(let url):
+                player.replaceCurrentItem(with: AVPlayerItem(url: url))
+                startCaptionLoad(
+                    demoCaptionTrack,
+                    using: LocalCaptionCueService(vttText: demoCaptionVTT),
+                    initialPlaybackTime: player.currentTime().seconds
+                )
+            case .youtubeVideoID(let videoID):
+                try await loadYouTubeVideo(videoID: videoID)
+            }
+
+            try Task.checkCancellation()
+            player.playImmediately(atRate: 1.0)
+        } catch {
+            guard !Self.isCancellation(error) else {
+                return
+            }
+
+            player.pause()
+            player.replaceCurrentItem(with: nil)
+            cancelCaptionLoad()
+            captionStore.clear()
+            loadError = error.localizedDescription
+        }
+    }
+
+    private func installCaptionTimeObserver() {
+        removeCaptionTimeObserver()
+
+        timeObserverToken = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+            queue: .main
+        ) { time in
+            MainActor.assumeIsolated {
+                captionStore.updateActiveCaption(at: time.seconds)
+            }
+        }
+    }
+
+    private func removeCaptionTimeObserver() {
+        guard let timeObserverToken else {
+            return
+        }
+
+        player.removeTimeObserver(timeObserverToken)
+        self.timeObserverToken = nil
+    }
+
+    private func loadYouTubeVideo(videoID: String) async throws {
+        try Task.checkCancellation()
+        let response = try await YouTubeClient.shared.player(videoID: videoID)
+        try Task.checkCancellation()
+        try response.validatePlayableForPlayerScreen()
+
+        let stream = try StreamExtractor.resolve(from: response)
+        try Task.checkCancellation()
+        player.replaceCurrentItem(with: makeYouTubePlayerItem(stream: stream))
+
+        if let track = response.captionTracks.first {
+            startCaptionLoad(
+                track,
+                using: YouTubeCaptionService.shared,
+                initialPlaybackTime: player.currentTime().seconds
+            )
+        } else {
+            captionStore.clear()
+        }
+    }
+
+    private func startCaptionLoad<Service: CaptionCueFetching>(
+        _ track: CaptionTrack,
+        using service: Service,
+        initialPlaybackTime: TimeInterval
+    ) {
+        cancelCaptionLoad()
+
+        captionLoadTask = Task { @MainActor in
+            await captionStore.loadTrack(
+                track,
+                using: service,
+                initialPlaybackTime: initialPlaybackTime
+            )
+        }
+    }
+
+    private func cancelCaptionLoad() {
+        captionLoadTask?.cancel()
+        captionLoadTask = nil
+    }
+
+    private func makeYouTubePlayerItem(stream: Stream) -> AVPlayerItem {
+        let asset = AVURLAsset(
+            url: stream.url,
+            options: [
+                "AVURLAssetHTTPHeaderFieldsKey": [
+                    "User-Agent": Self.youtubePlaybackUserAgent,
+                ],
+            ]
+        )
+
+        return AVPlayerItem(asset: asset)
+    }
+
+    private static let youtubePlaybackUserAgent = InnertubeContextProvider.androidVRUserAgent
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if Task.isCancelled || error is CancellationError {
+            return true
+        }
+
+        if let urlError = error as? URLError, urlError.code == .cancelled {
+            return true
+        }
+
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+    }
+}
+
+private enum PlayerSource: Hashable {
+    case directURL(URL)
+    case youtubeVideoID(String)
+}
+
+private extension PlayerResponse {
+    func validatePlayableForPlayerScreen() throws {
+        guard let status = playabilityStatus?.status else {
+            throw YouTubeError.playabilityBlocked("missing playability status")
+        }
+
+        guard status == "OK" else {
+            throw YouTubeError.playabilityBlocked(playabilityStatus?.reason ?? status)
+        }
     }
 }
 
 private let demoStreamURL = URL(
     string: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
 )!
+
+private let demoCaptionTrack = CaptionTrack(
+    id: "demo-en",
+    baseURL: URL(string: "https://www.youtube.com/api/timedtext?v=demo&lang=en")!,
+    languageCode: "en",
+    displayName: "English",
+    isAutoGenerated: false
+)
+
+private let demoCaptionVTT = """
+WEBVTT
+
+00:00:00.500 --> 00:00:04.200
+Big Buck Bunny finds a quiet place.
+
+00:00:04.800 --> 00:00:08.200
+The caption text is now parsed from WebVTT.
+
+00:00:08.800 --> 00:00:12.400
+Controls keep fading without moving the captions.
+
+00:00:13.000 --> 00:00:16.800
+Next: replace this local VTT with YouTube timedtext.
+"""

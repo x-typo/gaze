@@ -12,10 +12,18 @@ struct HomeView: View {
             NavigationLink {
                 PlayerScreen()
             } label: {
-                Label("Open Player", systemImage: "play.rectangle")
+                Label("Open Local Player", systemImage: "play.rectangle")
                     .font(.headline)
             }
             .buttonStyle(.borderedProminent)
+
+            NavigationLink {
+                PlayerScreen(videoID: "M7lc1UVf-VE")
+            } label: {
+                Label("Open YouTube Test", systemImage: "captions.bubble")
+                    .font(.headline)
+            }
+            .buttonStyle(.bordered)
         }
     }
 }
