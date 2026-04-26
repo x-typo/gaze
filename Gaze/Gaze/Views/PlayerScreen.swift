@@ -4,15 +4,12 @@ import SwiftUI
 struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
 
-    private let title: String
-
     @State private var player: AVPlayer
     @State private var isPlaying = false
     @State private var controlsVisible = true
     @State private var controlsHideTask: Task<Void, Never>?
 
-    init(title: String = "Test Stream", url: URL = demoStreamURL) {
-        self.title = title
+    init(url: URL = demoStreamURL) {
         _player = State(initialValue: AVPlayer(url: url))
     }
 
@@ -46,7 +43,6 @@ struct PlayerScreen: View {
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .statusBarHidden(true)
-        .accessibilityLabel(title)
         .onTapGesture {
             showControlsTemporarily()
         }

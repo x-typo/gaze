@@ -16,7 +16,6 @@ struct HomeView: View {
                     .font(.headline)
             }
             .buttonStyle(.borderedProminent)
-            .tint(Theme.accent)
         }
     }
 }

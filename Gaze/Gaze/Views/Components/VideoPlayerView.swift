@@ -15,6 +15,10 @@ struct VideoPlayerView: UIViewRepresentable {
     func updateUIView(_ uiView: PlayerContainerView, context: Context) {
         uiView.playerLayer.player = player
     }
+
+    static func dismantleUIView(_ uiView: PlayerContainerView, coordinator: ()) {
+        uiView.playerLayer.player = nil
+    }
 }
 
 struct CenteredVideoPlayerView<Overlay: View>: View {
