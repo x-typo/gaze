@@ -35,10 +35,11 @@ actor YouTubeClient {
 
             return playerResponse
         } catch {
+            let primaryError = error
             do {
                 return try await watchPagePlayer(videoID: videoID)
             } catch {
-                throw error
+                throw YouTubeError.fallbackFailed(primary: primaryError, fallback: error)
             }
         }
     }
@@ -259,6 +260,7 @@ nonisolated enum YouTubeError: Error, LocalizedError {
     case streamUnsupported(String)
     case missingPlayerResponse
     case malformedPlayerResponse
+    case fallbackFailed(primary: Error, fallback: Error)
 
     var errorDescription: String? {
         switch self {
@@ -282,6 +284,12 @@ nonisolated enum YouTubeError: Error, LocalizedError {
             "YouTube watch page did not include an initial player response."
         case .malformedPlayerResponse:
             "YouTube watch page player response could not be parsed."
+        case .fallbackFailed(let primary, let fallback):
+            [
+                "YouTube fallback failed.",
+                "Primary error: \(primary.localizedDescription)",
+                "Watch page error: \(fallback.localizedDescription)",
+            ].joined(separator: " ")
         }
     }
 }

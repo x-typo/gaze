@@ -7,7 +7,8 @@ nonisolated struct InnertubeBootstrap: Codable, Sendable {
     let fetchedAt: Date
 
     var isFresh: Bool {
-        Date().timeIntervalSince(fetchedAt) < 24 * 60 * 60
+        let age = Date().timeIntervalSince(fetchedAt)
+        return age >= 0 && age < 24 * 60 * 60
     }
 }
 

@@ -259,7 +259,7 @@ struct PlayerScreen: View {
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
             queue: .main
         ) { time in
-            Task { @MainActor in
+            MainActor.assumeIsolated {
                 captionStore.updateActiveCaption(at: time.seconds)
             }
         }
