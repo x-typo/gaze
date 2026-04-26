@@ -7,8 +7,8 @@ nonisolated enum StreamExtractor {
         }
 
         let formats = (streamingData.formats ?? []) + (streamingData.adaptiveFormats ?? [])
-        return bestMuxedFormat(from: formats) != nil
-            || streamingData.hlsManifestURL != nil
+        return streamingData.hlsManifestURL != nil
+            || bestMuxedFormat(from: formats) != nil
     }
 
     static func resolve(from response: PlayerResponse) throws -> Stream {
@@ -17,6 +17,15 @@ nonisolated enum StreamExtractor {
         }
 
         let formats = (streamingData.formats ?? []) + (streamingData.adaptiveFormats ?? [])
+        if let hlsManifestURL = streamingData.hlsManifestURL {
+            return Stream(
+                url: hlsManifestURL,
+                mimeType: "application/x-mpegURL",
+                isHLS: true,
+                qualityLabel: "Auto"
+            )
+        }
+
         if let format = bestMuxedFormat(from: formats),
            let url = format.url {
             return Stream(
@@ -27,20 +36,11 @@ nonisolated enum StreamExtractor {
             )
         }
 
-        if let hlsManifestURL = streamingData.hlsManifestURL {
-            return Stream(
-                url: hlsManifestURL,
-                mimeType: "application/x-mpegURL",
-                isHLS: true,
-                qualityLabel: "Auto"
-            )
-        }
-
         if formats.contains(where: { $0.signatureCipher != nil }) {
             throw YouTubeError.streamUnsupported("signed URL")
         }
 
-        throw YouTubeError.streamUnsupported("no HLS or muxed MP4 format")
+        throw YouTubeError.streamUnsupported("no HLS or direct muxed MP4 format")
     }
 
     private static func bestMuxedFormat(from formats: [StreamFormat]) -> StreamFormat? {
