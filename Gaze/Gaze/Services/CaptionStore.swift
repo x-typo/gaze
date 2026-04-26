@@ -8,15 +8,15 @@ final class CaptionStore {
     private(set) var activeCaptionText: String?
     private(set) var loadState = CaptionLoadState.idle
     private(set) var parseError: String?
+    private var activeCueIndex: Int?
 
     func loadVTT(_ text: String) {
         do {
-            cues = try VTTParser.parse(text)
-            loadState = cues.isEmpty ? .unavailable : .ready
+            storeCues(try VTTParser.parse(text), initialPlaybackTime: 0)
             parseError = nil
-            updateActiveCaption(at: 0)
         } catch {
             cues = []
+            activeCueIndex = nil
             activeCaptionText = nil
             loadState = .failed
             parseError = error.localizedDescription
@@ -37,15 +37,14 @@ final class CaptionStore {
                 return
             }
 
-            cues = fetchedCues
-            loadState = cues.isEmpty ? .unavailable : .ready
-            updateActiveCaption(at: initialPlaybackTime)
+            storeCues(fetchedCues, initialPlaybackTime: initialPlaybackTime)
         } catch {
             guard !Task.isCancelled else {
                 return
             }
 
             cues = []
+            activeCueIndex = nil
             activeCaptionText = nil
             loadState = .failed
             parseError = error.localizedDescription
@@ -54,22 +53,63 @@ final class CaptionStore {
 
     func updateActiveCaption(at playbackTime: TimeInterval) {
         guard playbackTime.isFinite, playbackTime >= 0 else {
+            activeCueIndex = nil
             activeCaptionText = nil
             return
         }
 
-        activeCaptionText = cue(at: playbackTime)?.text
+        if let activeCueIndex,
+           cues.indices.contains(activeCueIndex),
+           cues[activeCueIndex].contains(playbackTime) {
+            activeCaptionText = cues[activeCueIndex].text
+            return
+        }
+
+        activeCueIndex = cueIndex(at: playbackTime)
+        activeCaptionText = activeCueIndex.map { cues[$0].text }
     }
 
     func clear() {
         cues = []
+        activeCueIndex = nil
         activeCaptionText = nil
         loadState = .idle
         parseError = nil
     }
 
-    private func cue(at playbackTime: TimeInterval) -> CaptionCue? {
-        cues.first { $0.contains(playbackTime) }
+    private func storeCues(_ newCues: [CaptionCue], initialPlaybackTime: TimeInterval) {
+        cues = newCues.sorted { left, right in
+            if left.startTime == right.startTime {
+                left.endTime < right.endTime
+            } else {
+                left.startTime < right.startTime
+            }
+        }
+        activeCueIndex = nil
+        loadState = cues.isEmpty ? .unavailable : .ready
+        updateActiveCaption(at: initialPlaybackTime)
+    }
+
+    private func cueIndex(at playbackTime: TimeInterval) -> Int? {
+        var lowerBound = 0
+        var upperBound = cues.count
+
+        while lowerBound < upperBound {
+            let midpoint = lowerBound + ((upperBound - lowerBound) / 2)
+            if cues[midpoint].startTime <= playbackTime {
+                lowerBound = midpoint + 1
+            } else {
+                upperBound = midpoint
+            }
+        }
+
+        let candidateIndex = lowerBound - 1
+        guard cues.indices.contains(candidateIndex),
+              cues[candidateIndex].contains(playbackTime) else {
+            return nil
+        }
+
+        return candidateIndex
     }
 }
 

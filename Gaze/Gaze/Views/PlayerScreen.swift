@@ -223,6 +223,8 @@ struct PlayerScreen: View {
         installCaptionTimeObserver()
 
         do {
+            try Task.checkCancellation()
+
             switch source {
             case .directURL(let url):
                 player.replaceCurrentItem(with: AVPlayerItem(url: url))
@@ -235,8 +237,13 @@ struct PlayerScreen: View {
                 try await loadYouTubeVideo(videoID: videoID)
             }
 
+            try Task.checkCancellation()
             player.playImmediately(atRate: 1.0)
         } catch {
+            guard !Self.isCancellation(error) else {
+                return
+            }
+
             player.pause()
             player.replaceCurrentItem(with: nil)
             cancelCaptionLoad()
@@ -268,10 +275,13 @@ struct PlayerScreen: View {
     }
 
     private func loadYouTubeVideo(videoID: String) async throws {
+        try Task.checkCancellation()
         let response = try await YouTubeClient.shared.player(videoID: videoID)
+        try Task.checkCancellation()
         try response.validatePlayableForPlayerScreen()
 
         let stream = try StreamExtractor.resolve(from: response)
+        try Task.checkCancellation()
         player.replaceCurrentItem(with: makeYouTubePlayerItem(stream: stream))
 
         if let track = response.captionTracks.first {
@@ -320,6 +330,19 @@ struct PlayerScreen: View {
     }
 
     private static let youtubePlaybackUserAgent = InnertubeContextProvider.androidVRUserAgent
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if Task.isCancelled || error is CancellationError {
+            return true
+        }
+
+        if let urlError = error as? URLError, urlError.code == .cancelled {
+            return true
+        }
+
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+    }
 }
 
 private enum PlayerSource: Hashable {

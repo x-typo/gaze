@@ -7,8 +7,8 @@ enum VTTParser {
             .replacingOccurrences(of: "\r", with: "\n")
         let blocks = splitBlocks(in: normalizedText)
 
-        guard let header = blocks.first?.trimmingCharacters(in: .whitespacesAndNewlines),
-              header.hasPrefix("WEBVTT") else {
+        let header = blocks.first.map(normalizedHeader)
+        guard let header, header.hasPrefix("WEBVTT") else {
             throw VTTParserError.missingHeader
         }
 
@@ -41,6 +41,11 @@ enum VTTParser {
         }
 
         return blocks
+    }
+
+    nonisolated private static func normalizedHeader(_ block: String) -> String {
+        let withoutBOM = block.hasPrefix("\u{FEFF}") ? String(block.dropFirst()) : block
+        return withoutBOM.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     nonisolated private static func parseBlock(_ block: String, id: Int) throws -> CaptionCue? {
