@@ -174,10 +174,10 @@ final class YouTubeSession {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         let delegate = YouTubeCookieRefreshNavigationDelegate()
         webView.navigationDelegate = delegate
-        webView.customUserAgent = Self.desktopSafariUserAgent
+        webView.customUserAgent = YouTubeWebUserAgent.desktopSafari
 
         var request = URLRequest(url: Self.playlistsRefreshURL)
-        request.setValue(Self.desktopSafariUserAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(YouTubeWebUserAgent.desktopSafari, forHTTPHeaderField: "User-Agent")
 
         try await delegate.load(request, in: webView)
     }
@@ -205,10 +205,10 @@ final class YouTubeSession {
     private static func authDiagnostics(from cookies: [HTTPCookie]) -> YouTubeAuthDiagnostics {
         let managedCookies = cookies.filter(shouldManageCookie)
         let youtubeCookieCount = managedCookies
-            .filter { $0.domain.lowercased().contains("youtube.com") }
+            .filter { cookieBelongs($0, toDomain: "youtube.com") }
             .count
         let googleCookieCount = managedCookies
-            .filter { $0.domain.lowercased().contains("google.com") }
+            .filter { cookieBelongs($0, toDomain: "google.com") }
             .count
         let cookieNames = Set(managedCookies.map(\.name))
         let cookieHeaderByteCount = cookieHeader(from: cookies, for: innertubeRequestURL)?
@@ -268,9 +268,7 @@ final class YouTubeSession {
             return false
         }
 
-        let cookieDomain = cookie.domain
-            .lowercased()
-            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        let cookieDomain = normalizedCookieDomain(cookie.domain)
         guard host == cookieDomain || host.hasSuffix(".\(cookieDomain)") else {
             return false
         }
@@ -291,8 +289,19 @@ final class YouTubeSession {
     }
 
     private static func shouldManageCookie(_ cookie: HTTPCookie) -> Bool {
-        let domain = cookie.domain.lowercased()
-        return domain.contains("youtube.com") || domain.contains("google.com")
+        cookieBelongs(cookie, toDomain: "youtube.com")
+            || cookieBelongs(cookie, toDomain: "google.com")
+    }
+
+    private static func cookieBelongs(_ cookie: HTTPCookie, toDomain parentDomain: String) -> Bool {
+        let domain = normalizedCookieDomain(cookie.domain)
+        return domain == parentDomain || domain.hasSuffix(".\(parentDomain)")
+    }
+
+    private static func normalizedCookieDomain(_ domain: String) -> String {
+        domain
+            .lowercased()
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
     }
 
     private static func isYouTubeURL(_ url: URL?) -> Bool {
@@ -337,20 +346,33 @@ final class YouTubeSession {
         string: "https://www.youtube.com/feed/playlists"
     )!
 
-    private nonisolated static let desktopSafariUserAgent = [
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-        "AppleWebKit/605.1.15 (KHTML, like Gecko)",
-        "Version/17.0 Safari/605.1.15",
-    ].joined(separator: " ")
 }
 
 private final class YouTubeCookieRefreshNavigationDelegate: NSObject, WKNavigationDelegate {
+    private static let loadTimeoutNanoseconds: UInt64 = 20 * 1_000_000_000
+
     private var continuation: CheckedContinuation<Void, Error>?
+    private weak var webView: WKWebView?
+    private var timeoutTask: Task<Void, Never>?
 
     func load(_ request: URLRequest, in webView: WKWebView) async throws {
-        try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            webView.load(request)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                self.continuation = continuation
+                self.webView = webView
+                scheduleTimeout()
+
+                guard !Task.isCancelled else {
+                    cancelLoad(with: CancellationError())
+                    return
+                }
+
+                webView.load(request)
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancelLoad(with: CancellationError())
+            }
         }
     }
 
@@ -380,6 +402,10 @@ private final class YouTubeCookieRefreshNavigationDelegate: NSObject, WKNavigati
         }
 
         self.continuation = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        webView?.navigationDelegate = nil
+        webView = nil
 
         if let error {
             continuation.resume(throwing: error)
@@ -387,15 +413,38 @@ private final class YouTubeCookieRefreshNavigationDelegate: NSObject, WKNavigati
             continuation.resume()
         }
     }
+
+    private func cancelLoad(with error: Error) {
+        webView?.stopLoading()
+        finish(with: error)
+    }
+
+    private func scheduleTimeout() {
+        timeoutTask?.cancel()
+        timeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.loadTimeoutNanoseconds)
+
+            guard !Task.isCancelled else {
+                return
+            }
+
+            await MainActor.run {
+                self?.cancelLoad(with: YouTubeSessionError.cookieRefreshTimedOut)
+            }
+        }
+    }
 }
 
 private nonisolated enum YouTubeSessionError: LocalizedError {
     case missingCookieHeader
+    case cookieRefreshTimedOut
 
     var errorDescription: String? {
         switch self {
         case .missingCookieHeader:
             "No YouTube or Google cookies are available for authenticated requests."
+        case .cookieRefreshTimedOut:
+            "Timed out refreshing the YouTube web session."
         }
     }
 }

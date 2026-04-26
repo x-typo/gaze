@@ -8,6 +8,7 @@ final class YouTubeWebPlaylistFetcher: NSObject {
     private var continuation: CheckedContinuation<Data, Error>?
     private var webView: WKWebView?
     private var didComplete = false
+    private var timeoutTask: Task<Void, Never>?
 
     func playlists() async throws -> PlaylistPage {
         try PlaylistResponseParser.playlistPage(from: try await initialData(from: Self.playlistsURL))
@@ -24,19 +25,32 @@ final class YouTubeWebPlaylistFetcher: NSObject {
             throw YouTubeWebPlaylistFetcherError.alreadyLoading
         }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            didComplete = false
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                self.continuation = continuation
+                didComplete = false
 
-            let configuration = WKWebViewConfiguration()
-            configuration.websiteDataStore = .default()
+                let configuration = WKWebViewConfiguration()
+                configuration.websiteDataStore = .default()
 
-            let webView = WKWebView(frame: .zero, configuration: configuration)
-            webView.navigationDelegate = self
-            webView.customUserAgent = Self.mobileSafariUserAgent
+                let webView = WKWebView(frame: .zero, configuration: configuration)
+                webView.navigationDelegate = self
+                webView.customUserAgent = YouTubeWebUserAgent.mobileSafari
 
-            self.webView = webView
-            webView.load(URLRequest(url: url))
+                self.webView = webView
+                scheduleTimeout()
+
+                guard !Task.isCancelled else {
+                    cancelLoad(with: CancellationError())
+                    return
+                }
+
+                webView.load(URLRequest(url: url))
+            }
+        } onCancel: {
+            Task { @MainActor in
+                Self.shared.cancelLoad(with: CancellationError())
+            }
         }
     }
 
@@ -46,6 +60,8 @@ final class YouTubeWebPlaylistFetcher: NSObject {
         }
 
         self.continuation = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
         webView?.navigationDelegate = nil
         webView = nil
         didComplete = true
@@ -55,6 +71,26 @@ final class YouTubeWebPlaylistFetcher: NSObject {
             continuation.resume(returning: page)
         case .failure(let error):
             continuation.resume(throwing: error)
+        }
+    }
+
+    private func cancelLoad(with error: Error) {
+        webView?.stopLoading()
+        finish(with: .failure(error))
+    }
+
+    private func scheduleTimeout() {
+        timeoutTask?.cancel()
+        timeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.loadTimeoutNanoseconds)
+
+            guard !Task.isCancelled else {
+                return
+            }
+
+            await MainActor.run {
+                self?.cancelLoad(with: YouTubeWebPlaylistFetcherError.timedOut)
+            }
         }
     }
 
@@ -106,11 +142,7 @@ final class YouTubeWebPlaylistFetcher: NSObject {
         return components.url ?? URL(string: "https://www.youtube.com/playlist?list=\(playlistID)")!
     }
 
-    private static let mobileSafariUserAgent = [
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
-        "AppleWebKit/605.1.15 (KHTML, like Gecko)",
-        "Version/18.0 Mobile/15E148 Safari/604.1",
-    ].joined(separator: " ")
+    private static let loadTimeoutNanoseconds: UInt64 = 20 * 1_000_000_000
 }
 
 extension YouTubeWebPlaylistFetcher: WKNavigationDelegate {
@@ -138,6 +170,7 @@ extension YouTubeWebPlaylistFetcher: WKNavigationDelegate {
 private nonisolated enum YouTubeWebPlaylistFetcherError: LocalizedError {
     case alreadyLoading
     case missingInitialData
+    case timedOut
 
     var errorDescription: String? {
         switch self {
@@ -145,6 +178,8 @@ private nonisolated enum YouTubeWebPlaylistFetcherError: LocalizedError {
             "A YouTube playlists page load is already in progress."
         case .missingInitialData:
             "YouTube playlists page did not expose initial data."
+        case .timedOut:
+            "Timed out loading YouTube playlists."
         }
     }
 }

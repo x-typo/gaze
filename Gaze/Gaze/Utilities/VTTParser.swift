@@ -149,9 +149,20 @@ enum VTTParser {
         var index = text.startIndex
 
         while index < text.endIndex {
-            if text[index] == "&",
-               let semicolon = text[index...].firstIndex(of: ";") {
+            if text[index] == "&" {
                 let entityStart = text.index(after: index)
+                let entitySearchEnd = text.index(
+                    entityStart,
+                    offsetBy: maxEntitySearchLength,
+                    limitedBy: text.endIndex
+                ) ?? text.endIndex
+
+                guard let semicolon = text[entityStart..<entitySearchEnd].firstIndex(where: { $0 == ";" }) else {
+                    output.append(text[index])
+                    index = text.index(after: index)
+                    continue
+                }
+
                 let entity = String(text[entityStart..<semicolon])
 
                 if let decodedEntity = decodedEntity(entity) {
@@ -167,6 +178,8 @@ enum VTTParser {
 
         return output
     }
+
+    nonisolated private static let maxEntitySearchLength = 32
 
     nonisolated private static func decodedEntity(_ entity: String) -> String? {
         if let namedEntity = namedEntities[entity.lowercased()] {

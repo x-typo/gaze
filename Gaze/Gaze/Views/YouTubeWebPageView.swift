@@ -37,7 +37,7 @@ private struct YouTubeWebPageRepresentable: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        webView.customUserAgent = Self.mobileSafariUserAgent
+        webView.customUserAgent = YouTubeWebUserAgent.mobileSafari
         webView.allowsBackForwardNavigationGestures = true
         webView.load(URLRequest(url: url))
         return webView
@@ -69,9 +69,4 @@ private struct YouTubeWebPageRepresentable: UIViewRepresentable {
         }
     }
 
-    private static let mobileSafariUserAgent = [
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
-        "AppleWebKit/605.1.15 (KHTML, like Gecko)",
-        "Version/18.0 Mobile/15E148 Safari/604.1",
-    ].joined(separator: " ")
 }

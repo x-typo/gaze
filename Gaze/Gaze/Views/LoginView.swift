@@ -32,7 +32,7 @@ private struct YouTubeLoginWebView: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        webView.customUserAgent = Self.mobileSafariUserAgent
+        webView.customUserAgent = YouTubeWebUserAgent.mobileSafari
         webView.allowsBackForwardNavigationGestures = true
         webView.load(URLRequest(url: Self.loginURL))
         return webView
@@ -68,9 +68,4 @@ private struct YouTubeLoginWebView: UIViewRepresentable {
         string: "https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2F"
     )!
 
-    private static let mobileSafariUserAgent = [
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
-        "AppleWebKit/605.1.15 (KHTML, like Gecko)",
-        "Version/18.0 Mobile/15E148 Safari/604.1",
-    ].joined(separator: " ")
 }
