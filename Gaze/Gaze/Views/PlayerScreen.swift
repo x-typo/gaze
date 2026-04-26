@@ -13,8 +13,10 @@ struct PlayerScreen: View {
     @State private var controlsVisible = true
     @State private var controlsHideTask: Task<Void, Never>?
     @State private var captionLoadTask: Task<Void, Never>?
+    @State private var aspectRatioObservation: AnyCancellable?
     @State private var timeObserverToken: Any?
     @State private var loadError: String?
+    @State private var videoAspectRatio = defaultAspectRatio
 
     init(url: URL = demoStreamURL) {
         self.source = .directURL(url)
@@ -28,7 +30,7 @@ struct PlayerScreen: View {
         ZStack {
             CenteredVideoPlayerView(
                 player: player,
-                aspectRatio: 16.0 / 9.0
+                aspectRatio: videoAspectRatio
             ) {
                 ZStack {
                     VStack(spacing: 0) {
@@ -104,6 +106,8 @@ struct PlayerScreen: View {
         .onDisappear {
             controlsHideTask?.cancel()
             controlsHideTask = nil
+            aspectRatioObservation?.cancel()
+            aspectRatioObservation = nil
             cancelCaptionLoad()
             removeCaptionTimeObserver()
             captionStore.clear()
@@ -227,7 +231,7 @@ struct PlayerScreen: View {
 
             switch source {
             case .directURL(let url):
-                player.replaceCurrentItem(with: AVPlayerItem(url: url))
+                replaceCurrentItem(AVPlayerItem(url: url))
                 startCaptionLoad(
                     demoCaptionTrack,
                     using: LocalCaptionCueService(vttText: demoCaptionVTT),
@@ -282,7 +286,7 @@ struct PlayerScreen: View {
 
         let stream = try StreamExtractor.resolve(from: response)
         try Task.checkCancellation()
-        player.replaceCurrentItem(with: makeYouTubePlayerItem(stream: stream))
+        replaceCurrentItem(makeYouTubePlayerItem(stream: stream))
 
         if let track = response.captionTracks.first {
             startCaptionLoad(
@@ -316,6 +320,29 @@ struct PlayerScreen: View {
         captionLoadTask = nil
     }
 
+    private func replaceCurrentItem(_ item: AVPlayerItem) {
+        aspectRatioObservation?.cancel()
+        videoAspectRatio = Self.defaultAspectRatio
+        player.replaceCurrentItem(with: item)
+        observeAspectRatio(for: item)
+    }
+
+    private func observeAspectRatio(for item: AVPlayerItem) {
+        aspectRatioObservation = item
+            .publisher(for: \.presentationSize, options: [.initial, .new])
+            .compactMap(Self.aspectRatio(from:))
+            .removeDuplicates()
+            .sink { aspectRatio in
+                Task { @MainActor in
+                    guard item === player.currentItem else {
+                        return
+                    }
+
+                    videoAspectRatio = aspectRatio
+                }
+            }
+    }
+
     private func makeYouTubePlayerItem(stream: Stream) -> AVPlayerItem {
         let asset = AVURLAsset(
             url: stream.url,
@@ -330,6 +357,16 @@ struct PlayerScreen: View {
     }
 
     private static let youtubePlaybackUserAgent = InnertubeContextProvider.androidVRUserAgent
+    private static let defaultAspectRatio = 16.0 / 9.0
+
+    private nonisolated static func aspectRatio(from presentationSize: CGSize) -> CGFloat? {
+        guard presentationSize.width > 0,
+              presentationSize.height > 0 else {
+            return nil
+        }
+
+        return presentationSize.width / presentationSize.height
+    }
 
     private static func isCancellation(_ error: Error) -> Bool {
         if Task.isCancelled || error is CancellationError {

@@ -68,6 +68,48 @@ nonisolated struct PlayerRequestPayload: Encodable, Sendable {
     }
 }
 
+nonisolated struct SearchRequestPayload: Encodable, Sendable {
+    let context: InnertubeContext
+    let query: String?
+    let continuation: String?
+
+    init(
+        context: InnertubeContext,
+        query: String? = nil,
+        continuation: String? = nil
+    ) {
+        self.context = context
+        self.query = query
+        self.continuation = continuation
+    }
+}
+
+nonisolated struct BrowseRequestPayload: Encodable, Sendable {
+    let context: InnertubeContext
+    let browseID: String?
+    let continuation: String?
+
+    init(
+        context: InnertubeContext,
+        browseID: String? = nil,
+        continuation: String? = nil
+    ) {
+        self.context = context
+        self.browseID = browseID
+        self.continuation = continuation
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case context
+        case browseID = "browseId"
+        case continuation
+    }
+}
+
+nonisolated struct AccountsListRequestPayload: Encodable, Sendable {
+    let context: InnertubeContext
+}
+
 nonisolated struct PlayerResponse: Decodable, Sendable {
     let playabilityStatus: PlayabilityStatus?
     let streamingData: StreamingData?

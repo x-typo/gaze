@@ -141,13 +141,81 @@ enum VTTParser {
     }
 
     nonisolated private static func decodeEntities(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
+        guard text.contains("&") else {
+            return text
+        }
+
+        var output = ""
+        var index = text.startIndex
+
+        while index < text.endIndex {
+            if text[index] == "&" {
+                let entityStart = text.index(after: index)
+                let entitySearchEnd = text.index(
+                    entityStart,
+                    offsetBy: maxEntitySearchLength,
+                    limitedBy: text.endIndex
+                ) ?? text.endIndex
+
+                guard let semicolon = text[entityStart..<entitySearchEnd].firstIndex(where: { $0 == ";" }) else {
+                    output.append(text[index])
+                    index = text.index(after: index)
+                    continue
+                }
+
+                let entity = String(text[entityStart..<semicolon])
+
+                if let decodedEntity = decodedEntity(entity) {
+                    output.append(decodedEntity)
+                    index = text.index(after: semicolon)
+                    continue
+                }
+            }
+
+            output.append(text[index])
+            index = text.index(after: index)
+        }
+
+        return output
     }
+
+    nonisolated private static let maxEntitySearchLength = 32
+
+    nonisolated private static func decodedEntity(_ entity: String) -> String? {
+        if let namedEntity = namedEntities[entity.lowercased()] {
+            return namedEntity
+        }
+
+        if entity.hasPrefix("#x") || entity.hasPrefix("#X") {
+            let value = String(entity.dropFirst(2))
+            return scalarString(value, radix: 16)
+        }
+
+        if entity.hasPrefix("#") {
+            let value = String(entity.dropFirst())
+            return scalarString(value, radix: 10)
+        }
+
+        return nil
+    }
+
+    nonisolated private static func scalarString(_ value: String, radix: Int) -> String? {
+        guard let scalarValue = UInt32(value, radix: radix),
+              let scalar = UnicodeScalar(scalarValue) else {
+            return nil
+        }
+
+        return String(scalar)
+    }
+
+    nonisolated private static let namedEntities = [
+        "amp": "&",
+        "apos": "'",
+        "gt": ">",
+        "lt": "<",
+        "nbsp": " ",
+        "quot": "\"",
+    ]
 }
 
 enum VTTParserError: Error, LocalizedError {
