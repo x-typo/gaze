@@ -12,10 +12,10 @@ nonisolated enum RecoveryIssue: Equatable {
     case emptyPlaylists
     case emptyPlaylistVideos(playlistTitle: String)
     case emptySearch(query: String)
-    case playlistsFailure(message: String)
-    case playlistVideosFailure(message: String)
-    case searchFailure(message: String)
-    case paginationFailure(message: String)
+    case playlistsFailure
+    case playlistVideosFailure
+    case searchFailure
+    case paginationFailure
 }
 
 extension RecoveryPresentation {
@@ -45,11 +45,11 @@ extension RecoveryPresentation {
                 primaryActionTitle: nil,
                 secondaryActionTitle: nil
             )
-        case .emptyPlaylistVideos:
+        case .emptyPlaylistVideos(let playlistTitle):
             RecoveryPresentation(
                 title: "No Videos",
                 systemImage: "play.rectangle",
-                message: "YouTube did not return any videos for this playlist.",
+                message: emptyPlaylistVideosMessage(playlistTitle: playlistTitle),
                 primaryActionTitle: nil,
                 secondaryActionTitle: nil
             )
@@ -97,15 +97,15 @@ extension RecoveryPresentation {
     }
 
     static func issueForPlaylistsFailure(_ message: String) -> RecoveryIssue {
-        isAuthExpiredMessage(message) ? .authExpired : .playlistsFailure(message: message)
+        isAuthExpiredMessage(message) ? .authExpired : .playlistsFailure
     }
 
     static func issueForPlaylistVideosFailure(_ message: String) -> RecoveryIssue {
-        isAuthExpiredMessage(message) ? .authExpired : .playlistVideosFailure(message: message)
+        isAuthExpiredMessage(message) ? .authExpired : .playlistVideosFailure
     }
 
     static func issueForSearchFailure(_ message: String) -> RecoveryIssue {
-        isAuthExpiredMessage(message) ? .authExpired : .searchFailure(message: message)
+        isAuthExpiredMessage(message) ? .authExpired : .searchFailure
     }
 
     static func isAuthExpiredMessage(_ message: String) -> Bool {
@@ -125,5 +125,13 @@ extension RecoveryPresentation {
         }
 
         return "No YouTube videos matched \"\(query)\"."
+    }
+
+    private static func emptyPlaylistVideosMessage(playlistTitle: String) -> String {
+        guard !playlistTitle.isEmpty else {
+            return "YouTube did not return any videos for this playlist."
+        }
+
+        return "YouTube did not return any videos for \"\(playlistTitle)\"."
     }
 }

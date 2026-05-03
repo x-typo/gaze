@@ -7,8 +7,8 @@ struct PaginationFooterView: View {
 
     var body: some View {
         Group {
-            if let errorMessage, !isLoading {
-                failureView(errorMessage)
+            if errorMessage != nil, !isLoading {
+                failureView()
             } else {
                 ProgressView()
             }
@@ -18,10 +18,8 @@ struct PaginationFooterView: View {
         .padding(.vertical, 20)
     }
 
-    private func failureView(_ errorMessage: String) -> some View {
-        let presentation = RecoveryPresentation.make(
-            for: .paginationFailure(message: errorMessage)
-        )
+    private func failureView() -> some View {
+        let presentation = RecoveryPresentation.make(for: .paginationFailure)
 
         return VStack(spacing: 8) {
             Text(presentation.title)
