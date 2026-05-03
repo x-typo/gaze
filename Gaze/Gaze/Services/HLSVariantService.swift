@@ -226,11 +226,12 @@ actor HLSVariantService {
         var nextIndex = lines.index(after: index)
         while nextIndex < lines.endIndex {
             let uri = lines[nextIndex].trimmingCharacters(in: .whitespacesAndNewlines)
-            if !uri.isEmpty, !uri.hasPrefix("#") {
-                return true
+            guard !uri.isEmpty else {
+                nextIndex = lines.index(after: nextIndex)
+                continue
             }
 
-            nextIndex = lines.index(after: nextIndex)
+            return !uri.hasPrefix("#")
         }
 
         return false

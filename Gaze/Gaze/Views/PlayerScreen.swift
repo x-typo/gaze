@@ -439,7 +439,7 @@ struct PlayerScreen: View {
         )
         try Task.checkCancellation()
         currentStream = stream
-        selectedQualityID = playbackStore.preferredQualitySelection.isHighest
+        selectedQualityID = stream.isHLS || playbackStore.preferredQualitySelection.isHighest
             ? PlaybackQualitySelection.highest.rawValue
             : playbackStore.preferredQualitySelection.rawValue
         replaceCurrentItem(makeYouTubePlayerItem(stream: stream))
