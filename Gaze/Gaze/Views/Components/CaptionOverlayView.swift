@@ -9,7 +9,6 @@ struct CaptionOverlayView: View {
             .multilineTextAlignment(.center)
             .foregroundStyle(.white)
             .lineLimit(3)
-            .minimumScaleFactor(0.75)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
             .background(.black.opacity(0.50))

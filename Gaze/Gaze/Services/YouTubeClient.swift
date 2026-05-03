@@ -17,24 +17,51 @@ actor YouTubeClient {
     }
 
     func player(videoID: String) async throws -> PlayerResponse {
+        var playableFallback: PlayerResponse?
+
+        if let iOSResponse = try? await iOSPlayer(videoID: videoID),
+           iOSResponse.hasPlayableStream {
+            if iOSResponse.hasHLSStream {
+                return iOSResponse
+            }
+
+            playableFallback = iOSResponse
+        }
+
         do {
             let playerResponse = try await androidVRPlayer(videoID: videoID)
-            if playerResponse.hasPlayableStream {
+            if playerResponse.hasHLSStream {
                 return playerResponse
+            }
+
+            if playerResponse.hasPlayableStream {
+                playableFallback = playableFallback ?? playerResponse
             }
 
             if let webResponse = try? await innertubePlayer(videoID: videoID),
                webResponse.hasPlayableStream {
-                return webResponse
+                if webResponse.hasHLSStream {
+                    return webResponse
+                }
+
+                playableFallback = playableFallback ?? webResponse
             }
 
             if let watchResponse = try? await watchPagePlayer(videoID: videoID),
                watchResponse.hasPlayableStream {
-                return watchResponse
+                if watchResponse.hasHLSStream {
+                    return watchResponse
+                }
+
+                playableFallback = playableFallback ?? watchResponse
             }
 
-            return playerResponse
+            return playableFallback ?? playerResponse
         } catch {
+            if let playableFallback {
+                return playableFallback
+            }
+
             let primaryError = error
             do {
                 return try await watchPagePlayer(videoID: videoID)
@@ -195,7 +222,34 @@ actor YouTubeClient {
             payload: payload,
             responseType: PlayerResponse.self,
             headers: headers
+        ).withPlaybackUserAgent(InnertubeContextProvider.androidVRUserAgent)
+    }
+
+    private func iOSPlayer(videoID: String) async throws -> PlayerResponse {
+        let bootstrap = try await contextProvider.bootstrap()
+        let context = try await contextProvider.iOSContext()
+        let payload = PlayerRequestPayload(
+            context: context,
+            videoID: videoID
         )
+
+        var headers = [
+            "User-Agent": InnertubeContextProvider.iOSUserAgent,
+            "Origin": "https://www.youtube.com",
+            "X-YouTube-Client-Name": "5",
+            "X-YouTube-Client-Version": InnertubeContextProvider.iOSClientVersion,
+        ]
+
+        if let visitorData = bootstrap.visitorData {
+            headers["X-Goog-Visitor-Id"] = visitorData
+        }
+
+        return try await execute(
+            endpoint: .player,
+            payload: payload,
+            responseType: PlayerResponse.self,
+            headers: headers
+        ).withPlaybackUserAgent(InnertubeContextProvider.iOSUserAgent)
     }
 
     private func innertubePlayer(videoID: String) async throws -> PlayerResponse {
@@ -210,7 +264,7 @@ actor YouTubeClient {
             payload: payload,
             responseType: PlayerResponse.self,
             headers: [:]
-        )
+        ).withPlaybackUserAgent(Self.userAgent)
     }
 
     private func watchPagePlayer(videoID: String) async throws -> PlayerResponse {
@@ -253,6 +307,7 @@ actor YouTubeClient {
 
         do {
             return try decoder.decode(PlayerResponse.self, from: playerResponseData)
+                .withPlaybackUserAgent(Self.userAgent)
         } catch {
             throw YouTubeError.decoding(error)
         }
@@ -1429,6 +1484,10 @@ nonisolated enum YouTubeError: Error, LocalizedError {
 }
 
 private extension PlayerResponse {
+    nonisolated var hasHLSStream: Bool {
+        playabilityStatus?.status == "OK" && StreamExtractor.hasSupportedHLSStream(from: self)
+    }
+
     nonisolated var hasPlayableStream: Bool {
         playabilityStatus?.status == "OK" && StreamExtractor.canResolve(from: self)
     }

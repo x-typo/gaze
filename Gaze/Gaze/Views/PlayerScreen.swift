@@ -4,6 +4,7 @@ import SwiftUI
 
 struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(PlaybackStore.self) private var playbackStore
     @Environment(CaptionStore.self) private var captionStore
 
     private let source: PlayerSource
@@ -17,6 +18,12 @@ struct PlayerScreen: View {
     @State private var timeObserverToken: Any?
     @State private var loadError: String?
     @State private var videoAspectRatio = defaultAspectRatio
+    @State private var qualityOptions: [PlayableQualityOption] = []
+    @State private var selectedQualityID = PlaybackQualitySelection.highest.rawValue
+    @State private var qualityLoadTask: Task<Void, Never>?
+    @State private var hasCaptionTrack = false
+    @State private var isQualityPickerPresented = false
+    @State private var currentStream: Stream?
 
     init(url: URL = demoStreamURL) {
         self.source = .directURL(url)
@@ -36,7 +43,8 @@ struct PlayerScreen: View {
                     VStack(spacing: 0) {
                         Spacer()
 
-                        if let text = captionStore.activeCaptionText {
+                        if playbackStore.captionsEnabled,
+                           let text = captionStore.activeCaptionText {
                             CaptionOverlayView(text: text)
                                 .padding(.horizontal, 20)
                                 .padding(.bottom, 14)
@@ -58,6 +66,19 @@ struct PlayerScreen: View {
                     if controlsVisible {
                         playerControls
                             .transition(.opacity)
+                    }
+
+                    if isQualityPickerPresented {
+                        QualityPickerOverlayView(
+                            options: qualityOptions,
+                            selectedID: selectedQualityID,
+                            onSelect: { option in
+                                applyQuality(option)
+                                dismissQualityPicker()
+                            },
+                            onDismiss: dismissQualityPicker
+                        )
+                        .transition(.opacity)
                     }
                 }
             }
@@ -100,6 +121,7 @@ struct PlayerScreen: View {
                 ?? event.errorStatusCode.description
         }
         .onAppear {
+            player.appliesMediaSelectionCriteriaAutomatically = false
             player.play()
             showControlsTemporarily()
         }
@@ -108,6 +130,8 @@ struct PlayerScreen: View {
             controlsHideTask = nil
             aspectRatioObservation?.cancel()
             aspectRatioObservation = nil
+            qualityLoadTask?.cancel()
+            qualityLoadTask = nil
             cancelCaptionLoad()
             removeCaptionTimeObserver()
             captionStore.clear()
@@ -133,6 +157,8 @@ struct PlayerScreen: View {
             .accessibilityLabel("Back")
             .padding(.top, 18)
             .padding(.leading, 16)
+
+            topRightControls
 
             HStack(spacing: 32) {
                 Button {
@@ -175,6 +201,99 @@ struct PlayerScreen: View {
         }
     }
 
+    private var topRightControls: some View {
+        HStack(spacing: 12) {
+            if currentStream != nil {
+                Button {
+                    showQualityPicker()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.title3.weight(.semibold))
+
+                        Text(qualityControlLabel)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .padding(.horizontal, 13)
+                    .frame(height: 48)
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .background(.black.opacity(0.62), in: Capsule())
+                .accessibilityLabel("Quality, \(qualityAccessibilityLabel)")
+            }
+
+            if hasCaptionTrack {
+                Button {
+                    playbackStore.setCaptionsEnabled(!playbackStore.captionsEnabled)
+                    showControlsTemporarily()
+                } label: {
+                    Image(systemName: playbackStore.captionsEnabled ? "captions.bubble" : "captions.bubble.fill")
+                        .font(.title3.weight(.semibold))
+                        .frame(width: 48, height: 48)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .opacity(playbackStore.captionsEnabled ? 1.0 : 0.62)
+                .background(.black.opacity(0.62), in: Circle())
+                .accessibilityLabel(playbackStore.captionsEnabled ? "Hide Captions" : "Show Captions")
+            }
+        }
+        .padding(.top, 18)
+        .padding(.trailing, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    private var qualityControlLabel: String {
+        guard selectedQualityID == PlaybackQualitySelection.highest.rawValue else {
+            return selectedQualityOption.map(qualitySummaryLabel) ?? "Quality"
+        }
+
+        if let highestAvailableQualityLabel {
+            return "Auto \(highestAvailableQualityLabel)"
+        }
+
+        return "Auto"
+    }
+
+    private var qualityAccessibilityLabel: String {
+        guard selectedQualityID == PlaybackQualitySelection.highest.rawValue else {
+            return selectedQualityOption?.label ?? "Quality"
+        }
+
+        if let highestAvailableQualityLabel {
+            return "Highest available, up to \(highestAvailableQualityLabel)"
+        }
+
+        return "Highest available"
+    }
+
+    private var selectedQualityOption: PlayableQualityOption? {
+        qualityOptions.first { $0.id == selectedQualityID }
+    }
+
+    private var highestAvailableQualityLabel: String? {
+        qualityOptions
+            .first { $0.id != PlaybackQualitySelection.highest.rawValue }
+            .map(qualitySummaryLabel)
+    }
+
+    private func qualitySummaryLabel(for option: PlayableQualityOption) -> String {
+        if let height = option.height {
+            if let frameRate = option.frameRate, frameRate >= 50 {
+                return "\(height)p\(frameRate)"
+            }
+
+            return "\(height)p"
+        }
+
+        return option.label.replacingOccurrences(of: " HD", with: "")
+    }
+
     private func togglePlayback() {
         if isPlaying {
             player.pause()
@@ -205,6 +324,10 @@ struct PlayerScreen: View {
             controlsVisible = true
         }
 
+        guard !isQualityPickerPresented else {
+            return
+        }
+
         controlsHideTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_000_000_000)
 
@@ -220,8 +343,33 @@ struct PlayerScreen: View {
         }
     }
 
+    private func showQualityPicker() {
+        controlsHideTask?.cancel()
+        controlsHideTask = nil
+
+        withAnimation(.easeInOut(duration: 0.16)) {
+            controlsVisible = true
+            isQualityPickerPresented = true
+        }
+    }
+
+    private func dismissQualityPicker() {
+        withAnimation(.easeOut(duration: 0.16)) {
+            isQualityPickerPresented = false
+        }
+
+        showControlsTemporarily()
+    }
+
     private func load(_ source: PlayerSource) async {
         loadError = nil
+        hasCaptionTrack = false
+        isQualityPickerPresented = false
+        currentStream = nil
+        qualityOptions = []
+        selectedQualityID = PlaybackQualitySelection.highest.rawValue
+        qualityLoadTask?.cancel()
+        qualityLoadTask = nil
         cancelCaptionLoad()
         captionStore.clear()
         installCaptionTimeObserver()
@@ -232,6 +380,7 @@ struct PlayerScreen: View {
             switch source {
             case .directURL(let url):
                 replaceCurrentItem(AVPlayerItem(url: url))
+                hasCaptionTrack = true
                 startCaptionLoad(
                     demoCaptionTrack,
                     using: LocalCaptionCueService(vttText: demoCaptionVTT),
@@ -284,19 +433,169 @@ struct PlayerScreen: View {
         try Task.checkCancellation()
         try response.validatePlayableForPlayerScreen()
 
-        let stream = try StreamExtractor.resolve(from: response)
+        let stream = try StreamExtractor.resolve(
+            from: response,
+            selection: playbackStore.preferredQualitySelection
+        )
         try Task.checkCancellation()
+        currentStream = stream
+        selectedQualityID = stream.isHLS || playbackStore.preferredQualitySelection.isHighest
+            ? PlaybackQualitySelection.highest.rawValue
+            : playbackStore.preferredQualitySelection.rawValue
         replaceCurrentItem(makeYouTubePlayerItem(stream: stream))
+        loadQualityOptions(for: stream, response: response)
 
         if let track = response.captionTracks.first {
+            hasCaptionTrack = true
             startCaptionLoad(
                 track,
                 using: YouTubeCaptionService.shared,
                 initialPlaybackTime: player.currentTime().seconds
             )
         } else {
+            hasCaptionTrack = false
             captionStore.clear()
         }
+    }
+
+    private func loadQualityOptions(for stream: Stream, response: PlayerResponse) {
+        qualityLoadTask?.cancel()
+
+        qualityOptions = [highestQualityOption(for: stream)]
+
+        if stream.isHLS {
+            qualityLoadTask = Task { @MainActor in
+                let options = await HLSVariantService.shared.qualityOptions(
+                    for: stream,
+                    userAgent: playbackUserAgent(for: stream)
+                )
+
+                guard !Task.isCancelled,
+                      currentStream?.url == stream.url else {
+                    return
+                }
+
+                qualityOptions = options
+                applyPreferredQualitySelectionIfAvailable(in: options)
+            }
+        } else {
+            let directOptions = StreamExtractor.playableMuxedQualityOptions(from: response)
+            let highestDirectStream = directOptions.lazy.compactMap { option -> Stream? in
+                guard case .directStream(let stream) = option.application else {
+                    return nil
+                }
+
+                return stream
+            }.first ?? stream
+
+            qualityOptions = [highestQualityOption(for: highestDirectStream)]
+                + directOptions
+
+            if !qualityOptions.contains(where: { $0.id == selectedQualityID }) {
+                selectedQualityID = PlaybackQualitySelection.highest.rawValue
+            }
+        }
+    }
+
+    private func highestQualityOption(for stream: Stream?) -> PlayableQualityOption {
+        let application: PlaybackQualityApplication
+        if let stream {
+            application = stream.isHLS ? .hlsCap(nil) : .directStream(stream)
+        } else {
+            application = .hlsCap(nil)
+        }
+        let label = if let stream,
+                       let summary = qualitySummaryLabel(for: stream) {
+            "Highest available · up to \(summary)"
+        } else {
+            "Highest available"
+        }
+
+        return PlayableQualityOption(
+            id: PlaybackQualitySelection.highest.rawValue,
+            label: label,
+            height: stream?.height,
+            frameRate: stream?.fps,
+            bitrate: stream?.bitrate,
+            application: application
+        )
+    }
+
+    private func qualitySummaryLabel(for stream: Stream) -> String? {
+        if let height = stream.height {
+            if let frameRate = stream.fps, frameRate >= 50 {
+                return "\(height)p\(frameRate)"
+            }
+
+            return "\(height)p"
+        }
+
+        return stream.qualityLabel
+    }
+
+    private func applyQuality(
+        _ option: PlayableQualityOption,
+        shouldPersist: Bool = true
+    ) {
+        switch option.application {
+        case .hlsCap(let cap):
+            guard let currentItem = player.currentItem else {
+                return
+            }
+
+            applyHLSCap(cap, to: currentItem)
+            selectedQualityID = option.id
+            if shouldPersist {
+                playbackStore.setPreferredQualitySelection(PlaybackQualitySelection(rawValue: option.id))
+            }
+
+        case .directStream(let stream):
+            let wasPlaying = isPlaying || player.timeControlStatus == .playing
+            let currentTime = player.currentTime()
+            let hasFiniteTime = currentTime.seconds.isFinite
+            let item = makeYouTubePlayerItem(stream: stream)
+
+            currentStream = stream
+            selectedQualityID = option.id
+            replaceCurrentItem(item)
+
+            if shouldPersist {
+                playbackStore.setPreferredQualitySelection(PlaybackQualitySelection(rawValue: option.id))
+            }
+
+            if hasFiniteTime {
+                player.seek(
+                    to: currentTime,
+                    toleranceBefore: .zero,
+                    toleranceAfter: .zero
+                ) { _ in
+                    guard wasPlaying else {
+                        return
+                    }
+
+                    Task { @MainActor in
+                        player.play()
+                    }
+                }
+            } else if wasPlaying {
+                player.play()
+            }
+        }
+    }
+
+    private func applyPreferredQualitySelectionIfAvailable(in options: [PlayableQualityOption]) {
+        let preferredSelection = playbackStore.preferredQualitySelection
+        guard !preferredSelection.isHighest else {
+            selectedQualityID = PlaybackQualitySelection.highest.rawValue
+            return
+        }
+
+        guard let option = options.first(where: { $0.id == preferredSelection.rawValue }) else {
+            selectedQualityID = PlaybackQualitySelection.highest.rawValue
+            return
+        }
+
+        applyQuality(option, shouldPersist: false)
     }
 
     private func startCaptionLoad<Service: CaptionCueFetching>(
@@ -348,15 +647,42 @@ struct PlayerScreen: View {
             url: stream.url,
             options: [
                 "AVURLAssetHTTPHeaderFieldsKey": [
-                    "User-Agent": Self.youtubePlaybackUserAgent,
+                    "User-Agent": playbackUserAgent(for: stream),
                 ],
             ]
         )
 
-        return AVPlayerItem(asset: asset)
+        let item = AVPlayerItem(asset: asset)
+        applyQualityPreferences(to: item, stream: stream)
+        return item
     }
 
-    private static let youtubePlaybackUserAgent = InnertubeContextProvider.androidVRUserAgent
+    private func applyQualityPreferences(to item: AVPlayerItem, stream: Stream) {
+        guard stream.isHLS else {
+            return
+        }
+
+        applyHLSCap(stream.hlsCap, to: item)
+    }
+
+    private func applyHLSCap(_ cap: HLSQualityCap?, to item: AVPlayerItem) {
+        if let cap {
+            item.preferredMaximumResolution = CGSize(
+                width: CGFloat(cap.width),
+                height: CGFloat(cap.height)
+            )
+            item.preferredPeakBitRate = cap.peakBitRate ?? 0
+        } else {
+            item.preferredMaximumResolution = .zero
+            item.preferredPeakBitRate = 0
+        }
+    }
+
+    private func playbackUserAgent(for stream: Stream) -> String {
+        stream.playbackUserAgent ?? Self.youtubePlaybackUserAgent
+    }
+
+    private static let youtubePlaybackUserAgent = InnertubeContextProvider.iOSUserAgent
     private static let defaultAspectRatio = 16.0 / 9.0
 
     private nonisolated static func aspectRatio(from presentationSize: CGSize) -> CGFloat? {
