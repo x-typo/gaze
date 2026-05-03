@@ -500,7 +500,7 @@ struct PlayerScreen: View {
     private func highestQualityOption(for stream: Stream?) -> PlayableQualityOption {
         let application: PlaybackQualityApplication
         if let stream {
-            application = .directStream(stream)
+            application = stream.isHLS ? .hlsCap(nil) : .directStream(stream)
         } else {
             application = .hlsCap(nil)
         }

@@ -199,7 +199,7 @@ actor HLSVariantService {
             height: maxOption?.height,
             frameRate: maxOption?.frameRate,
             bitrate: maxOption?.bitrate,
-            application: .directStream(stream)
+            application: stream.isHLS ? .hlsCap(nil) : .directStream(stream)
         )
     }
 
