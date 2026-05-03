@@ -2,12 +2,12 @@ import SwiftUI
 
 struct PaginationFooterView: View {
     let isLoading: Bool
-    let errorMessage: String?
+    let hasError: Bool
     let retry: () -> Void
 
     var body: some View {
         Group {
-            if errorMessage != nil, !isLoading {
+            if hasError, !isLoading {
                 failureView()
             } else {
                 ProgressView()

@@ -74,7 +74,7 @@ struct PlaylistDetailView: View {
         if store.continuation != nil {
             PaginationFooterView(
                 isLoading: store.isLoadingMore,
-                errorMessage: store.paginationErrorMessage
+                hasError: store.paginationErrorMessage != nil
             ) {
                 Task {
                     await loadMoreVideos()

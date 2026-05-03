@@ -68,7 +68,7 @@ struct PlaylistsView: View {
         if playlistsStore.continuation != nil {
             PaginationFooterView(
                 isLoading: playlistsStore.isLoadingMore,
-                errorMessage: playlistsStore.paginationErrorMessage
+                hasError: playlistsStore.paginationErrorMessage != nil
             ) {
                 Task {
                     await loadMorePlaylists()

@@ -1,4 +1,4 @@
-nonisolated struct RecoveryPresentation: Equatable {
+nonisolated struct RecoveryPresentation: Equatable, Sendable {
     let title: String
     let systemImage: String
     let message: String
@@ -6,7 +6,7 @@ nonisolated struct RecoveryPresentation: Equatable {
     let secondaryActionTitle: String?
 }
 
-nonisolated enum RecoveryIssue: Equatable {
+nonisolated enum RecoveryIssue: Equatable, Sendable {
     case signedOut
     case authExpired
     case emptyPlaylists

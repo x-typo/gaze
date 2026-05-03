@@ -115,7 +115,7 @@ struct SearchResultsView: View {
         if searchStore.continuation != nil {
             PaginationFooterView(
                 isLoading: searchStore.isLoadingMore,
-                errorMessage: searchStore.paginationErrorMessage
+                hasError: searchStore.paginationErrorMessage != nil
             ) {
                 Task {
                     await searchStore.loadMore()
