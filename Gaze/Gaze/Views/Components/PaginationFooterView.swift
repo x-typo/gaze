@@ -8,23 +8,7 @@ struct PaginationFooterView: View {
     var body: some View {
         Group {
             if let errorMessage, !isLoading {
-                VStack(spacing: 8) {
-                    Text("Load More Failed")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.primary)
-
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(3)
-
-                    Button("Retry", action: retry)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Theme.accent)
-                        .buttonStyle(.plain)
-                        .padding(.top, 2)
-                }
+                failureView(errorMessage)
             } else {
                 ProgressView()
             }
@@ -32,5 +16,29 @@ struct PaginationFooterView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 16)
         .padding(.vertical, 20)
+    }
+
+    private func failureView(_ errorMessage: String) -> some View {
+        let presentation = RecoveryPresentation.make(
+            for: .paginationFailure(message: errorMessage)
+        )
+
+        return VStack(spacing: 8) {
+            Text(presentation.title)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            Text(presentation.message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+
+            Button(presentation.primaryActionTitle ?? "Retry", action: retry)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Theme.accent)
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+        }
     }
 }

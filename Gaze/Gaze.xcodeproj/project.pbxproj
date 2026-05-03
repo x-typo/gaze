@@ -256,8 +256,6 @@
 				DEVELOPMENT_TEAM = K83R42K74H;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Gaze uses the microphone only when speech captions are enabled for videos without YouTube captions.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Gaze uses speech recognition only when YouTube captions are unavailable and speech captions are enabled.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -290,8 +288,6 @@
 				DEVELOPMENT_TEAM = K83R42K74H;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Gaze uses the microphone only when speech captions are enabled for videos without YouTube captions.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Gaze uses speech recognition only when YouTube captions are unavailable and speech captions are enabled.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

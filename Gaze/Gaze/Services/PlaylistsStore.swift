@@ -9,6 +9,7 @@ final class PlaylistsStore {
     var isLoading = false
     var isLoadingMore = false
     var errorMessage: String?
+    var paginationErrorMessage: String?
     var hasLoaded = false
 
     private let client: YouTubeClient
@@ -34,6 +35,7 @@ final class PlaylistsStore {
 
         isLoading = true
         errorMessage = nil
+        paginationErrorMessage = nil
         defer {
             isLoading = false
         }
@@ -46,6 +48,8 @@ final class PlaylistsStore {
 
             playlists = page.playlists
             continuation = page.continuation
+            errorMessage = nil
+            paginationErrorMessage = nil
             hasLoaded = true
         } catch {
             guard !Self.isCancellation(error) else {
@@ -65,7 +69,7 @@ final class PlaylistsStore {
 
         let currentContinuation = continuation
         isLoadingMore = true
-        errorMessage = nil
+        paginationErrorMessage = nil
         defer {
             isLoadingMore = false
         }
@@ -82,12 +86,13 @@ final class PlaylistsStore {
 
             appendUnique(page.playlists)
             self.continuation = page.continuation
+            paginationErrorMessage = nil
         } catch {
             guard !Self.isCancellation(error) else {
                 return
             }
 
-            errorMessage = error.localizedDescription
+            paginationErrorMessage = error.localizedDescription
         }
     }
 
@@ -103,6 +108,8 @@ final class PlaylistsStore {
 
             playlists = page.playlists
             continuation = page.continuation
+            errorMessage = nil
+            paginationErrorMessage = nil
             hasLoaded = true
         } catch {
             guard !Self.isCancellation(error) else {
@@ -111,6 +118,7 @@ final class PlaylistsStore {
 
             playlists = []
             continuation = nil
+            paginationErrorMessage = nil
             errorMessage = [
                 "Web playlist extraction failed: \(webError.localizedDescription)",
                 "Native playlist request failed: \(error.localizedDescription)",
@@ -123,13 +131,14 @@ final class PlaylistsStore {
         playlists = []
         continuation = nil
         errorMessage = error.localizedDescription
+        paginationErrorMessage = nil
         hasLoaded = true
         isLoading = false
         isLoadingMore = false
     }
 
     func failLoadingMore(with error: Error) {
-        errorMessage = error.localizedDescription
+        paginationErrorMessage = error.localizedDescription
         isLoadingMore = false
     }
 
@@ -139,6 +148,7 @@ final class PlaylistsStore {
         isLoading = false
         isLoadingMore = false
         errorMessage = nil
+        paginationErrorMessage = nil
         hasLoaded = false
     }
 

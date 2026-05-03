@@ -6,6 +6,7 @@ struct SearchResultsView: View {
     let query: String
 
     @State private var searchText: String
+    @State private var isShowingYouTubeWebPage = false
     @FocusState private var isSearchFocused: Bool
 
     init(query: String) {
@@ -28,6 +29,14 @@ struct SearchResultsView: View {
         .task(id: query) {
             searchText = query
             await searchStore.searchVideos(query: query)
+        }
+        .sheet(isPresented: $isShowingYouTubeWebPage) {
+            NavigationStack {
+                YouTubeWebPageView(
+                    title: "YouTube",
+                    url: YouTubeWebPageView.homeURL
+                )
+            }
         }
     }
 
@@ -67,18 +76,11 @@ struct SearchResultsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let errorMessage = searchStore.errorMessage,
                   searchStore.results.isEmpty {
-            ContentUnavailableView(
-                "Search Failed",
-                systemImage: "exclamationmark.triangle",
-                description: Text(errorMessage)
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            failureView(errorMessage)
         } else if searchStore.hasSearched && searchStore.results.isEmpty {
-            ContentUnavailableView(
-                "No Results",
-                systemImage: "magnifyingglass"
+            RecoveryUnavailableView(
+                RecoveryPresentation.make(for: .emptySearch(query: activeQuery))
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             resultsList
         }
@@ -113,19 +115,48 @@ struct SearchResultsView: View {
         if searchStore.continuation != nil {
             PaginationFooterView(
                 isLoading: searchStore.isLoadingMore,
-                errorMessage: searchStore.errorMessage
+                errorMessage: searchStore.paginationErrorMessage
             ) {
                 Task {
                     await searchStore.loadMore()
                 }
             }
                 .task(id: searchStore.continuation) {
-                    guard searchStore.errorMessage == nil else {
+                    guard searchStore.paginationErrorMessage == nil else {
                         return
                     }
 
                     await searchStore.loadMore()
                 }
+        }
+    }
+
+    private func failureView(_ message: String) -> some View {
+        let issue = RecoveryPresentation.issueForSearchFailure(message)
+        let presentation = RecoveryPresentation.make(
+            for: issue
+        )
+
+        return RecoveryUnavailableView(presentation) {
+            VStack(spacing: 12) {
+                if issue == .authExpired {
+                    Button(presentation.primaryActionTitle ?? "Open YouTube Page") {
+                        isShowingYouTubeWebPage = true
+                    }
+
+                    Button(presentation.secondaryActionTitle ?? "Retry") {
+                        Task {
+                            await searchStore.searchVideos(query: activeQuery)
+                        }
+                    }
+                } else {
+                    Button(presentation.primaryActionTitle ?? "Retry") {
+                        Task {
+                            await searchStore.searchVideos(query: activeQuery)
+                        }
+                    }
+                }
+            }
         }
     }
 
