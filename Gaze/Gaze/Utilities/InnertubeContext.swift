@@ -86,6 +86,24 @@ actor InnertubeContextProvider {
         )
     }
 
+    func iOSContext() async throws -> InnertubeContext {
+        let bootstrap = try await bootstrap()
+        return InnertubeContext(
+            client: InnertubeClientContext(
+                clientName: "IOS",
+                clientVersion: Self.iOSClientVersion,
+                hl: "en",
+                gl: "US",
+                visitorData: bootstrap.visitorData,
+                deviceMake: "Apple",
+                deviceModel: "iPhone16,2",
+                userAgent: Self.iOSUserAgent,
+                osName: "iPhone",
+                osVersion: "18.3.2.22D82"
+            )
+        )
+    }
+
     private var cachedBootstrap: InnertubeBootstrap? {
         guard let data = defaults.data(forKey: Self.cacheKey) else {
             return nil
@@ -155,6 +173,13 @@ actor InnertubeContextProvider {
     nonisolated static let androidVRUserAgent = [
         "com.google.android.apps.youtube.vr.oculus/1.65.10",
         "(Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+    ].joined(separator: " ")
+
+    nonisolated static let iOSClientVersion = "21.02.3"
+
+    nonisolated static let iOSUserAgent = [
+        "com.google.ios.youtube/21.02.3",
+        "(iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
     ].joined(separator: " ")
 }
 

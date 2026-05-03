@@ -115,9 +115,20 @@ nonisolated struct PlayerResponse: Decodable, Sendable {
     let streamingData: StreamingData?
     let videoDetails: VideoDetails?
     let captions: PlayerCaptions?
+    let playbackUserAgent: String?
 
     var captionTracks: [CaptionTrack] {
         captions?.playerCaptionsTracklistRenderer?.captionTracks.map(\.captionTrack) ?? []
+    }
+
+    func withPlaybackUserAgent(_ userAgent: String) -> PlayerResponse {
+        PlayerResponse(
+            playabilityStatus: playabilityStatus,
+            streamingData: streamingData,
+            videoDetails: videoDetails,
+            captions: captions,
+            playbackUserAgent: userAgent
+        )
     }
 }
 
@@ -148,6 +159,9 @@ nonisolated struct StreamFormat: Decodable, Sendable {
     let qualityLabel: String?
     let audioQuality: String?
     let signatureCipher: String?
+    let width: Int?
+    let height: Int?
+    let fps: Int?
 
     var isDirectMuxedMP4: Bool {
         url != nil
@@ -172,8 +186,15 @@ nonisolated struct VideoDetails: Decodable, Sendable {
 }
 
 nonisolated struct Stream: Sendable {
+    let id: String
     let url: URL
     let mimeType: String
     let isHLS: Bool
     let qualityLabel: String?
+    let width: Int?
+    let height: Int?
+    let fps: Int?
+    let bitrate: Int?
+    let hlsCap: HLSQualityCap?
+    let playbackUserAgent: String?
 }
