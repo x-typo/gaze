@@ -9,6 +9,7 @@ final class PlaylistDetailStore {
     var isLoading = false
     var isLoadingMore = false
     var errorMessage: String?
+    var paginationErrorMessage: String?
     var hasLoaded = false
 
     private let client: YouTubeClient
@@ -34,6 +35,7 @@ final class PlaylistDetailStore {
 
         isLoading = true
         errorMessage = nil
+        paginationErrorMessage = nil
         defer {
             isLoading = false
         }
@@ -46,6 +48,8 @@ final class PlaylistDetailStore {
 
             videos = page.videos
             continuation = page.continuation
+            errorMessage = nil
+            paginationErrorMessage = nil
             hasLoaded = true
         } catch {
             guard !Self.isCancellation(error) else {
@@ -55,6 +59,7 @@ final class PlaylistDetailStore {
             videos = []
             continuation = nil
             errorMessage = error.localizedDescription
+            paginationErrorMessage = nil
             hasLoaded = true
         }
     }
@@ -68,7 +73,7 @@ final class PlaylistDetailStore {
 
         let currentContinuation = continuation
         isLoadingMore = true
-        errorMessage = nil
+        paginationErrorMessage = nil
         defer {
             isLoadingMore = false
         }
@@ -85,17 +90,18 @@ final class PlaylistDetailStore {
 
             appendUnique(page.videos)
             self.continuation = page.continuation
+            paginationErrorMessage = nil
         } catch {
             guard !Self.isCancellation(error) else {
                 return
             }
 
-            errorMessage = error.localizedDescription
+            paginationErrorMessage = error.localizedDescription
         }
     }
 
     func failLoadingMore(with error: Error) {
-        errorMessage = error.localizedDescription
+        paginationErrorMessage = error.localizedDescription
         isLoadingMore = false
     }
 
@@ -105,6 +111,7 @@ final class PlaylistDetailStore {
         isLoading = false
         isLoadingMore = false
         errorMessage = nil
+        paginationErrorMessage = nil
         hasLoaded = false
     }
 

@@ -10,6 +10,7 @@ final class SearchStore {
     var isLoading = false
     var isLoadingMore = false
     var errorMessage: String?
+    var paginationErrorMessage: String?
     var hasSearched = false
 
     @ObservationIgnored private var activeSearchID = UUID()
@@ -32,6 +33,7 @@ final class SearchStore {
         hasSearched = true
         isLoading = true
         errorMessage = nil
+        paginationErrorMessage = nil
         defer {
             if activeSearchID == searchID {
                 isLoading = false
@@ -47,6 +49,8 @@ final class SearchStore {
 
             results = page.videos
             continuation = page.continuation
+            errorMessage = nil
+            paginationErrorMessage = nil
         } catch {
             guard activeSearchID == searchID,
                   !Self.isCancellation(error) else {
@@ -56,6 +60,7 @@ final class SearchStore {
             results = []
             continuation = nil
             errorMessage = error.localizedDescription
+            paginationErrorMessage = nil
         }
     }
 
@@ -72,7 +77,7 @@ final class SearchStore {
         let currentContinuation = continuation
 
         isLoadingMore = true
-        errorMessage = nil
+        paginationErrorMessage = nil
         defer {
             isLoadingMore = false
         }
@@ -90,6 +95,7 @@ final class SearchStore {
 
             appendUnique(page.videos)
             self.continuation = page.continuation
+            paginationErrorMessage = nil
         } catch {
             guard activeSearchID == searchID,
                   query == currentQuery,
@@ -97,7 +103,7 @@ final class SearchStore {
                 return
             }
 
-            errorMessage = error.localizedDescription
+            paginationErrorMessage = error.localizedDescription
         }
     }
 
@@ -109,6 +115,7 @@ final class SearchStore {
         isLoading = false
         isLoadingMore = false
         errorMessage = nil
+        paginationErrorMessage = nil
         hasSearched = false
     }
 

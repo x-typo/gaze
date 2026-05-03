@@ -2,6 +2,7 @@ import SwiftUI
 import WebKit
 
 struct YouTubeWebPageView: View {
+    static let homeURL = URL(string: "https://www.youtube.com/")!
     static let playlistsURL = URL(string: "https://www.youtube.com/feed/playlists")!
 
     @Environment(\.dismiss) private var dismiss

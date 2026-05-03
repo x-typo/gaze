@@ -6,6 +6,7 @@ struct PlaylistDetailView: View {
     let playlist: Playlist
 
     @State private var store = PlaylistDetailStore()
+    @State private var isShowingYouTubeWebPage = false
 
     var body: some View {
         content
@@ -14,6 +15,14 @@ struct PlaylistDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .task(id: playlist.id) {
                 await store.load(playlistID: playlist.id)
+            }
+            .sheet(isPresented: $isShowingYouTubeWebPage) {
+                NavigationStack {
+                    YouTubeWebPageView(
+                        title: "YouTube",
+                        url: YouTubeWebPageView.homeURL
+                    )
+                }
             }
     }
 
@@ -26,12 +35,11 @@ struct PlaylistDetailView: View {
                   store.videos.isEmpty {
             failureView(errorMessage)
         } else if store.hasLoaded && store.videos.isEmpty {
-            ContentUnavailableView(
-                "No Videos",
-                systemImage: "play.rectangle",
-                description: Text("YouTube did not return any videos for this playlist.")
+            RecoveryUnavailableView(
+                RecoveryPresentation.make(
+                    for: .emptyPlaylistVideos(playlistTitle: playlist.title)
+                )
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             videoList
         }
@@ -66,14 +74,14 @@ struct PlaylistDetailView: View {
         if store.continuation != nil {
             PaginationFooterView(
                 isLoading: store.isLoadingMore,
-                errorMessage: store.errorMessage
+                hasError: store.paginationErrorMessage != nil
             ) {
                 Task {
                     await loadMoreVideos()
                 }
             }
                 .task(id: store.continuation) {
-                    guard store.errorMessage == nil else {
+                    guard store.paginationErrorMessage == nil else {
                         return
                     }
 
@@ -83,18 +91,32 @@ struct PlaylistDetailView: View {
     }
 
     private func failureView(_ message: String) -> some View {
-        ContentUnavailableView {
-            Label("Playlist Failed", systemImage: "exclamationmark.triangle")
-        } description: {
-            Text(message)
-        } actions: {
-            Button("Retry") {
-                Task {
-                    await store.load(playlistID: playlist.id, force: true)
+        let issue = RecoveryPresentation.issueForPlaylistVideosFailure(message)
+        let presentation = RecoveryPresentation.make(
+            for: issue
+        )
+
+        return RecoveryUnavailableView(presentation) {
+            VStack(spacing: 12) {
+                if issue == .authExpired {
+                    Button(presentation.primaryActionTitle ?? "Open YouTube Page") {
+                        isShowingYouTubeWebPage = true
+                    }
+
+                    Button(presentation.secondaryActionTitle ?? "Retry") {
+                        Task {
+                            await store.load(playlistID: playlist.id, force: true)
+                        }
+                    }
+                } else {
+                    Button(presentation.primaryActionTitle ?? "Retry") {
+                        Task {
+                            await store.load(playlistID: playlist.id, force: true)
+                        }
+                    }
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func loadMoreVideos() async {
